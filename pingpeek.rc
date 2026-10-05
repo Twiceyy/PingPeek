@@ -1,0 +1,31 @@
+// Icon, manifest and version info for PingPeek.exe. Numeric constants instead of header names so it
+// compiles with zig's built-in resource compiler and no Windows SDK.
+
+1 ICON "pingpeek.ico"
+
+// 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID, 24 = RT_MANIFEST
+1 24 "pingpeek.manifest"
+
+1 VERSIONINFO
+FILEVERSION     1,3,0,0
+PRODUCTVERSION  1,3,0,0
+FILEOS          0x40004   // VOS_NT_WINDOWS32
+FILETYPE        0x1       // VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "PingPeek - ping overlay for Fortnite"
+            VALUE "FileVersion", "1.3.0"
+            VALUE "ProductName", "PingPeek"
+            VALUE "ProductVersion", "1.3.0"
+            VALUE "OriginalFilename", "PingPeek.exe"
+            VALUE "LegalCopyright", "Copyright (c) 2026 Twiceyy. MIT License."
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
