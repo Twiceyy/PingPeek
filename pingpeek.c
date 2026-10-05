@@ -8,7 +8,7 @@
 // every 2 s; PingPeek shows every raw sample, once a second. Nothing here touches the game process: it
 // reads the game's log file and, while you are in a match, sends one 22-byte UDP packet a second.
 //
-// Usage: PingPeek.exe        start it; run it again to close it
+// Usage: PingPeek.exe        start it; close it from the tray icon or by running it again
 //        PingPeek.exe X Y    start it X,Y pixels from the top-left of the game's screen,
 //                            or move the copy that is already running there
 
@@ -34,6 +34,8 @@
 #define WM_STATUS (WM_APP + 1)   // worker -> window: wParam = state | ms << 8, lParam = data center label
 #define WM_TOGGLE (WM_APP + 2)   // a second launch without a position: close
 #define WM_MOVETO (WM_APP + 3)   // a second launch with a position: wParam = x, lParam = y
+#define WM_TRAY   (WM_APP + 4)   // tray icon mouse events
+#define ID_EXIT   1              // tray menu item
 
 #define PING_EVERY_MS    1000
 #define PING_TIMEOUT_MS  1000
@@ -48,7 +50,7 @@ static const wchar_t APP_NAME[] = L"PingPeek";
 static const wchar_t USAGE[] =
     L"PingPeek shows your ping to the Fortnite server you're playing on.\n\n"
     L"Start it:   PingPeek.exe\n"
-    L"Close it:   run PingPeek.exe again\n"
+    L"Close it:   tray icon > Exit, or run PingPeek.exe again\n"
     L"Move it:   PingPeek.exe X Y\n"
     L"(X and Y are pixels from the top-left corner of the game's screen)\n\n"
     L"Example: PingPeek.exe 12 12";
@@ -63,6 +65,9 @@ static char           g_dc[9];
 static const wchar_t *g_flash;          // short notice shown whether or not the game is in front
 static BOOL           g_exiting;
 static ULONGLONG      g_started;
+static NOTIFYICONDATAW g_tray;
+static HWND           g_tray_wnd;          // hidden window that owns the tray icon and its menu
+static UINT           g_taskbar_created;   // broadcast when Explorer restarts and the tray is rebuilt
 
 // ---- Fortnite log -------------------------------------------------------------------------------
 
@@ -345,6 +350,33 @@ static void status_text(wchar_t *text, wchar_t *widest) {
     else lstrcpyW(widest, text);
 }
 
+// ---- Tray icon ----------------------------------------------------------------------------------
+// Shows that PingPeek is running. Hovering shows the current status; clicking opens a menu with Exit.
+// It belongs to its own hidden window: the overlay window can never take focus, and a menu whose owner
+// can't take focus doesn't close when you click elsewhere.
+
+static void tray_update(DWORD action) {
+    g_tray.cbSize = sizeof g_tray;
+    g_tray.hWnd = g_tray_wnd;
+    g_tray.uID = 1;
+    g_tray.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
+    g_tray.uCallbackMessage = WM_TRAY;
+    if (!g_tray.hIcon)
+        g_tray.hIcon = (HICON)LoadImageW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(1), IMAGE_ICON,
+                                         GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
+    if (!g_tray.szTip[0]) lstrcpyW(g_tray.szTip, APP_NAME);
+    Shell_NotifyIconW(action, &g_tray);
+}
+
+static void tray_tip(const wchar_t *status) {
+    wchar_t tip[128];
+    wsprintfW(tip, L"%s: %s", APP_NAME, status);
+    if (lstrcmpW(tip, g_tray.szTip)) {
+        lstrcpynW(g_tray.szTip, tip, 128);
+        if (g_tray.hWnd) tray_update(NIM_MODIFY);   // not before the icon exists
+    }
+}
+
 static float clamp01(float v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
 // Anti-aliased coverage of a w x h rounded rectangle with corner radius rad, at pixel center (x, y).
@@ -373,6 +405,7 @@ static RECT game_monitor(void) {
 static void refresh(void) {
     wchar_t text[48], widest[48];
     status_text(text, widest);
+    if (!g_flash) tray_tip(text);
     int len = lstrlenW(text);
 
     HDC screen = GetDC(NULL), dc = CreateCompatibleDC(screen);
@@ -447,6 +480,35 @@ static void flash(const wchar_t *msg, UINT ms) {
     SetTimer(g_wnd, 1, ms, NULL);
 }
 
+static void quit(void) {
+    g_exiting = TRUE;
+    flash(L"PingPeek off", 1000);
+}
+
+static void tray_menu(void) {
+    HMENU menu = CreatePopupMenu();
+    POINT pt;
+    AppendMenuW(menu, MF_STRING, ID_EXIT, L"Exit");
+    GetCursorPos(&pt);
+    SetForegroundWindow(g_tray_wnd);   // otherwise the menu doesn't close when you click elsewhere
+    int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0, g_tray_wnd, NULL);
+    PostMessageW(g_tray_wnd, WM_NULL, 0, 0);
+    DestroyMenu(menu);
+    if (cmd == ID_EXIT && !g_exiting) quit();
+}
+
+static LRESULT CALLBACK trayproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == g_taskbar_created && msg) {   // Explorer restarted: put the icon back
+        tray_update(NIM_ADD);
+        return 0;
+    }
+    if (msg == WM_TRAY) {
+        if (lp == WM_RBUTTONUP || lp == WM_LBUTTONUP) tray_menu();
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
 static void CALLBACK on_foreground(HWINEVENTHOOK hook, DWORD ev, HWND hwnd, LONG obj, LONG child, DWORD thread,
                                    DWORD time) {
     (void)hook; (void)ev; (void)hwnd; (void)obj; (void)child; (void)thread; (void)time;
@@ -473,8 +535,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g_exiting = FALSE;
             flash(L"PingPeek on", 2000);
         } else if (GetTickCount64() - g_started >= IGNORE_CLOSE_MS) {
-            g_exiting = TRUE;
-            flash(L"PingPeek off", 1000);
+            quit();
         }
         return 0;
     case WM_MOVETO:
@@ -493,6 +554,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     case WM_DESTROY:
+        Shell_NotifyIconW(NIM_DELETE, &g_tray);
         PostQuitMessage(0);
         return 0;
     }
@@ -552,6 +614,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show) {
     g_wnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                             APP_NAME, APP_NAME, WS_POPUP, 0, 0, 1, 1, NULL, NULL, inst, NULL);
     if (!g_wnd) return 1;
+
+    WNDCLASSW tc = {0};
+    tc.lpfnWndProc = trayproc;
+    tc.hInstance = inst;
+    tc.lpszClassName = L"PingPeekTray";
+    RegisterClassW(&tc);
+    g_tray_wnd = CreateWindowExW(0, tc.lpszClassName, APP_NAME, WS_POPUP, 0, 0, 0, 0, NULL, NULL, inst, NULL);
+    g_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated");
+    tray_update(NIM_ADD);
 
     SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, NULL, on_foreground, 0, 0,
                     WINEVENT_OUTOFCONTEXT);
