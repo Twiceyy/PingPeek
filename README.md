@@ -30,10 +30,12 @@ second.
 
 Download `PingPeek.exe` and run it. Windows 10 or 11, nothing to install.
 
-- **Close:** run it again.
+- **Close:** click the tray icon and choose **Exit**, or run it again.
 - **Move:** `PingPeek.exe X Y`, in pixels from the top-left of the game's screen.
 
-It only shows while Fortnite is the active window, and clicks pass through it.
+It only shows while Fortnite is the active window, and clicks pass through it. Hover the tray icon to
+see your ping any time. If you can't see the icon, Windows has tucked it under the **^** arrow; drag it
+onto the taskbar to keep it visible.
 
 ## What it shows
 
