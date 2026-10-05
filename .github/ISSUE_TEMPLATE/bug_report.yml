@@ -1,0 +1,41 @@
+name: Bug report
+description: PingPeek isn't working the way the README describes.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the FAQ in the README first. Don't paste your Fortnite log here: it contains your account ID.
+  - type: input
+    id: version
+    attributes:
+      label: PingPeek version
+      placeholder: "1.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows version
+      options: [Windows 11, Windows 10]
+    validations:
+      required: true
+  - type: dropdown
+    id: display
+    attributes:
+      label: Fortnite display mode
+      options: [Fullscreen, Windowed Fullscreen, Windowed]
+    validations:
+      required: true
+  - type: input
+    id: shows
+    attributes:
+      label: What the overlay shows
+      placeholder: "e.g. lost · Frankfurt, or nothing at all"
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true

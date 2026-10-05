@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest an improvement. PingPeek aims to stay small and do one thing well.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like PingPeek to do?
+    validations:
+      required: true
