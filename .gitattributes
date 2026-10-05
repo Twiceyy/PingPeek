@@ -1,0 +1,9 @@
+# Same line endings on every checkout, so a local build and the CI build produce the same exe
+# (the manifest is embedded in it byte for byte).
+* text=auto eol=lf
+
+# Batch files need CRLF line endings to run reliably on Windows.
+*.cmd text eol=crlf
+
+*.ico binary
+*.png binary
