@@ -1,0 +1,52 @@
+name: Release
+
+# Push a tag like v1.3.0 to build, test and publish PingPeek.exe. The release notes come from the
+# matching section of CHANGELOG.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write      # create the release
+  id-token: write      # sign the build provenance attestation
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.17.0
+
+      - name: Build and test
+        shell: cmd
+        run: |
+          call build.cmd || exit /b 1
+          call test.cmd || exit /b 1
+
+      - name: Release notes
+        shell: pwsh
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          $hash = (Get-FileHash PingPeek.exe -Algorithm SHA256).Hash.ToLower()
+          $log = Get-Content CHANGELOG.md -Raw
+          $m = [regex]::Match($log, "(?ms)^## \[$([regex]::Escape($v))\][^\n]*\n(.*?)(?=^## |^\[|\z)")
+          if (-not $m.Success) { throw "CHANGELOG.md has no section for $v" }
+          @($m.Groups[1].Value.Trim(), "", "SHA-256: ``$hash``") | Out-File -Encoding utf8 notes.md
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: PingPeek.exe
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) { "Release $env:TAG already exists, leaving it as is."; exit 0 }
+          gh release create $env:TAG PingPeek.exe --title "PingPeek $($env:TAG.TrimStart('v'))" --notes-file notes.md
